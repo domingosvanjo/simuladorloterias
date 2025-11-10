@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gerador de Combinações — Loterias da Caixa</title>
+  <style>
+    body{background:#0f172a;color:#e6eef8;font-family:Inter,system-ui,sans-serif;margin:0;padding:24px}
+    .container{max-width:980px;margin:0 auto}
+    h1{font-size:22px;margin-bottom:6px}
+    p{color:#94a3b8;font-size:13px;margin-top:0}
+    .card{background:#0b1220;border-radius:14px;padding:16px;box-shadow:0 6px 18px rgba(2,6,23,0.6);margin-bottom:14px}
+    label{font-size:13px;color:#94a3b8;display:block;margin-bottom:6px}
+    input,select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.03);color:inherit;margin-bottom:8px}
+    button{background:#10b981;border:none;color:#04201a;padding:10px 12px;border-radius:10px;font-weight:600;cursor:pointer;margin-right:6px}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.1);color:#94a3b8}
+    .results{margin-top:12px}
+    .game{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+    .nums{display:flex;gap:6px;flex-wrap:wrap}
+    .num{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);font-weight:700}
+    footer{font-size:12px;color:#94a3b8;text-align:center;margin-top:20px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gerador de Combinações — Loterias da Caixa</h1>
+    <p>Escolha o jogo, quantidade de combinações e o modo de geração (aleatório, equilibrado, quentes/frias, 3-6-9).</p>
+
+    <div class="card">
+      <label for="game">Selecione o jogo:</label>
+      <select id="game">
+        <option value="lotofacil">Lotofácil (1–25, 15 números)</option>
+        <option value="quina">Quina (1–80, 5 números)</option>
+        <option value="megasena">Mega-Sena (1–60, 6 números)</option>
+        <option value="duplasena">Dupla Sena (1–50, 6 números)</option>
+        <option value="lotomania">Lotomania (0–99, 50 números)</option>
+        <option value="timemania">Timemania (1–80, 10 números)</option>
+      </select>
+
+      <label>Quantidade de jogos:</label>
+      <input type="number" id="numGames" min="1" max="200" value="5">
+
+      <label>Modo de geração:</label>
+      <select id="mode">
+        <option value="random">Aleatório puro</option>
+        <option value="balanced">Equilibrado (pares/ímpares)</option>
+        <option value="hotcold">Quentes & Frias</option>
+        <option value="369">Método 3-6-9</option>
+      </select>
+
+      <label>Dezenas quentes (opcional — separadas por vírgula)</label>
+      <input id="hotInput" type="text" placeholder="Ex.: 3,7,11">
+
+      <div style="margin-top:10px">
+        <button id="generate">Gerar</button>
+        <button id="clear" class="secondary">Limpar</button>
+        <button id="download" class="secondary">Baixar CSV</button>
+      </div>
+    </div>
+
+    <div class="card results" id="resultsCard">
+      <strong>Resultados</strong>
+      <div id="results"></div>
+    </div>
+
+    <footer>Geração local — nenhum dado é enviado a servidores.</footer>
+  </div>
+
+<script>
+const rng = (min, max) => Math.floor(Math.random()*(max-min+1))+min;
+const uniqueRandomSample = (pool, k)=>{
+  const arr = [...pool];
+  for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
+  return arr.slice(0,k);
+};
+
+const rules = {
+  lotofacil:{max:25, pick:15},
+  quina:{max:80, pick:5},
+  megasena:{max:60, pick:6},
+  duplasena:{max:50, pick:6},
+  lotomania:{max:99, pick:50},
+  timemania:{max:80, pick:10}
+};
+
+function countEven(nums){return nums.filter(n=>n%2===0).length}
+
+function generateRandomGame(max,pick){
+  const pool=Array.from({length:max+1},(_,i)=>i);
+  pool.shift(); // remover 0 caso o jogo não use
+  return uniqueRandomSample(pool,pick).sort((a,b)=>a-b);
+}
+
+function generateBalancedGame(max,pick){
+  const pool=Array.from({length:max},(_,i)=>i+1);
+  let tries=0;
+  while(tries<2000){
+    const g=uniqueRandomSample(pool,pick);
+    const ev=countEven(g);
+    if(ev>=Math.floor(pick/2)-1 && ev<=Math.ceil(pick/2)+1) return g.sort((a,b)=>a-b);
+    tries++;
+  }
+  return generateRandomGame(max,pick);
+}
+
+function generateHotColdGame(max,pick,hotList){
+  const pool=Array.from({length:max},(_,i)=>i+1);
+  const hot=hotList.filter(n=>n>=1&&n<=max);
+  const hotSel=uniqueRandomSample(hot.length?hot:pool,Math.min(Math.ceil(pick/3),hot.length||0));
+  const rest=uniqueRandomSample(pool.filter(n=>!hotSel.includes(n)),pick-hotSel.length);
+  return [...hotSel,...rest].sort((a,b)=>a-b);
+}
+
+function generate369Game(max,pick){
+  const pool=Array.from({length:max},(_,i)=>i+1);
+  const mult3=pool.filter(n=>n%3===0);
+  const chosen=[...uniqueRandomSample(mult3,Math.min(3,pick))];
+  const rest=uniqueRandomSample(pool.filter(n=>!chosen.includes(n)),pick-chosen.length);
+  return [...chosen,...rest].sort((a,b)=>a-b);
+}
+
+function generateGames(){
+  const gameType=document.getElementById('game').value;
+  const {max,pick}=rules[gameType];
+  const mode=document.getElementById('mode').value;
+  const hotList=document.getElementById('hotInput').value.split(',').map(x=>parseInt(x)).filter(x=>!isNaN(x));
+  const q=parseInt(document.getElementById('numGames').value)||1;
+  const games=[];
+
+  for(let i=0;i<q;i++){
+    let g;
+    if(mode==='random') g=generateRandomGame(max,pick);
+    else if(mode==='balanced') g=generateBalancedGame(max,pick);
+    else if(mode==='hotcold') g=generateHotColdGame(max,pick,hotList);
+    else if(mode==='369') g=generate369Game(max,pick);
+    games.push(g);
+  }
+  renderGames(games,gameType);
+  window._lastGames=games;
+}
+
+function renderGames(games,type){
+  const res=document.getElementById('results');res.innerHTML='';
+  games.forEach((g,i)=>{
+    const div=document.createElement('div');div.className='game';
+    const nums=document.createElement('div');nums.className='nums';
+    g.forEach(n=>{const s=document.createElement('div');s.className='num';s.textContent=String(n).padStart(2,'0');nums.appendChild(s)});
+    const meta=document.createElement('div');meta.textContent=`Jogo ${i+1} | Soma:${g.reduce((a,b)=>a+b,0)} | Pares:${countEven(g)}`;
+    div.appendChild(nums);div.appendChild(meta);res.appendChild(div);
+  });
+}
+
+document.getElementById('generate').addEventListener('click',generateGames);
+document.getElementById('clear').addEventListener('click',()=>{document.getElementById('results').innerHTML=''});
+document.getElementById('download').addEventListener('click',()=>{
+  const gms=window._lastGames||[];if(!gms.length)return alert('Gere jogos primeiro.');
+  const csv=gms.map((g,i)=>`Jogo ${i+1},${g.join(' ')}`).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='loterias.csv';a.click();URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
